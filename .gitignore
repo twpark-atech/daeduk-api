@@ -45,5 +45,8 @@ logs/
 .DS_Store
 Thumbs.db
 
+/data
+/fastapi/data
+
 check.py
 visualization.py
