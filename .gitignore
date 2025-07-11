@@ -21,6 +21,7 @@ __pycache__/
 *.ckpt
 *.pt
 *.pkl
+*.plan
 
 # 로그, 결과
 wandb/
