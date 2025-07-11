@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+
+# VSCode, PyCharm
+.vscode/
+.idea/
+
+# 환경 설정
+.env
+*.env
+
+# 모델 및 데이터
+*.h5
+*.hdf5
+*.dat
+*.npy
+*.npz
+*.ckpt
+*.pt
+*.pkl
+
+# 로그, 결과
+wandb/
+*.log
+logs/
+*.tif
+*.shp
+*.dbf
+*.prj
+*.shx
+*.cpg
+*.geojson
+
+# Docker
+*.db
+*.sqlite3
+*.sock
+*.pid
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+check.py
+visualization.py

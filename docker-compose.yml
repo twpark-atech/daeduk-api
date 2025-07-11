@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  triton:
+    build:
+      context: ./triton
+    container_name: triton
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+    volumes:
+      - ./triton:/models
+    command: tritonserver --model-repository=/models
+    networks:
+      - inference_net
+
+  fastapi:
+    build:
+      context: ./fastapi
+    container_name: fastapi_server
+    depends_on:
+      - triton
+    environment:
+      - TRITON_SERVER_URL=http://triton:8000
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./fastapi:/app
+    networks:
+      - inference_net
+
+networks:
+  inference_net:
+    driver: bridge
