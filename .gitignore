@@ -22,6 +22,7 @@ __pycache__/
 *.pt
 *.pkl
 *.plan
+*.zip
 
 # 로그, 결과
 wandb/
