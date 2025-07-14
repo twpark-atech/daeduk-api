@@ -23,15 +23,15 @@ daeduk_api
 KMA_SFCTM3={기상청API허브 API Key}
 GETULTRASRTFCST={기상청 단기예보 조회서비스 API Key}
 ```
-기상청API허브 : https://apihub.kma.go.kr/
-기상청 단기예보 조회서비스 : https://www.data.go.kr/data/15084084/openapi.do
+- 기상청API허브 : https://apihub.kma.go.kr/
+- 기상청 단기예보 조회서비스 : https://www.data.go.kr/data/15084084/openapi.do
 
 2. 데이터 다운로드
 ```
 data -> /fastapi/data
 1 -> /triton/flood_model/1
 ```
-데이터 다운로드 : https://drive.google.com/file/d/1auJhLPEoTDKF6LsVlmhiX52bQ0CVrNQP/view?usp=sharing
+- 데이터 다운로드 : https://drive.google.com/file/d/1auJhLPEoTDKF6LsVlmhiX52bQ0CVrNQP/view?usp=sharing
 
 3. Docker 실행
 ```
@@ -50,4 +50,4 @@ docker compose up -d
         ex) 6 (기상청에서 제공해주는 초단기예보는 6시간까지 존재)
     - 'batch_size' : 사용할 배치 사이즈 입력
         ex) 8 (RTX 3090 기준, Batch Size 8: 12초 가량 소요)
-URL : localhost:9000/docs
+- URL : localhost:9000/docs
