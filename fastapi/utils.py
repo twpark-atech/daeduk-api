@@ -1,6 +1,7 @@
 import os
 import json
 import h5py
+import time
 import requests
 import numpy as np
 import pandas as pd
@@ -46,15 +47,27 @@ def rain_variables(rain):
     rain_norm = [x / 25.0 for x in rain_interp]
     rain_feat = make_rain_variables2(rain_norm)
     rain_feat_norm = normalize_rain_variables(rain_feat)
-    input_2 = np.array(rain_feat_norm, dtype=np.float32)[np.newaxis, :]
+    input_2 = np.array(rain_feat_norm, dtype=np.float32)
     return input_2
 
-def prediction(
-        h5_path, 
-        rain_feat, 
-        batch_size=1,
-        client
-    ):
+def parse_rn1(fcst_value):
+    if isinstance(fcst_value, str):
+        if '강수없음' in fcst_value:
+            return 0.0
+        elif '1mm 미만' in fcst_value:
+            return 0.5
+        elif '30.0~50.0mm' in fcst_value:
+            return 40.0
+        elif '50.0mm 이상' in fcst_value:
+            return 50.0
+        elif 'mm' in fcst_value and '~' not in fcst_value:
+            return float(fcst_value.replace('mm', ''))
+        else:
+            return 0.0
+    else:
+        return float(fcst_value)
+
+def prediction(client, h5_path, rain_feat, batch_size=1):
     pad_h = (PATCH_SIZE - ORIGINAL_H % PATCH_SIZE) % PATCH_SIZE
     pad_w = (PATCH_SIZE - ORIGINAL_W % PATCH_SIZE) % PATCH_SIZE
     padded_h = ORIGINAL_H + pad_h
@@ -75,13 +88,14 @@ def prediction(
                 top_feat_batch.append(top)
 
             top_feat = np.stack(top_feat_batch, axis=0).astype(np.float32)
+            rain_batch = np.broadcast_to(rain_feat, (len(top_feat), rain_feat.shape[0]))
 
             inputs = [
                 httpclient.InferInput("input_1", top_feat.shape, "FP32"),
-                httpclient.InferInput("input_2", rain_feat.shape, "FP32"),
+                httpclient.InferInput("input_2", rain_batch.shape, "FP32"),
             ]
             inputs[0].set_data_from_numpy(top_feat)
-            inputs[1].set_data_from_numpy(rain_feat)
+            inputs[1].set_data_from_numpy(rain_batch)
             outputs = [httpclient.InferRequestedOutput("reshape_1")]
 
             response = client.infer(model_name="flood_model", inputs=inputs, outputs=outputs)
@@ -100,55 +114,19 @@ def prediction(
     return mask
 
 def result_to_geojson(
-        mask, 
-        ref_height, 
-        ref_width, 
+        mask,
         transform, 
         crs
     ):
-    shapes = features.shapes(mask.astype(np.uint8), mask=mask, transform=transform)
-    polygons = [shape(geom) for geom, value in shapes if value == 1]
-    flood_gdf = gpd.GeoDataFrame(geometry=polygons)
-    flood_gdf = flood_gdf.set_crs(crs, allow_override=True)
-
-    lc_gdf = gpd.read_file(LC_PATH)
-    lc_gdf = lc_gdf.set_crs('EPSG:5174', allow_override=True)
-    lc_gdf = lc_gdf.to_crs('EPSG:5186')
-    exclude_classes = [str(x) for x in [151, 152, 153, 511, 521, 522, 711, 712, 721]]
-    excluded_area_lc = lc_gdf[lc_gdf["L3_CODE"].isin(exclude_classes)]
-
-    bridge_gdf = gpd.read_file(RD_PATH)
-    bridge_gdf = bridge_gdf.set_crs("EPSG:5186", allow_override=True)
-
-    excluded_union = unary_union(pd.concat([
-        excluded_area_lc.geometry,
-        bridge_gdf.geometry
-    ]))
-    excluded_gdf = gpd.GeoDataFrame(geometry=[excluded_union], crs=crs)
-
-    flood_filtered = gpd.overlay(flood_gdf, excluded_gdf, how='difference')
-
-    filtered_mask = rasterize(
-        [(geom, 1) for geom in flood_filtered.geometry],
-        out_shape=(ref_height, ref_width),
-        transform=transform,
-        fill=0,
-        dtype=np.uint8
-    )
-
-    mask_patch = filtered_mask.astype(np.uint8)
-
     shapes_gen = features.shapes(
-        mask_patch,
-        mask = (mask_patch == 1),
-        transform=transform
+        mask.astype(np.uint8),
+        mask=(mask == 1),
+        transform = transform
     )
     polygons = [shape(geom) for geom, val in shapes_gen if val == 1]
-
     flood_gdf = gpd.GeoDataFrame(geometry=polygons, crs=crs)
     flood_gdf = flood_gdf.to_crs("EPSG:4326")
 
-    # 파일 저장 또는 결과 반환
     flood_gdf.to_file(os.path.join(RPATH, 'prediction.geojson'))
     geojson_str = flood_gdf.to_json()
     return geojson_str
@@ -206,8 +184,7 @@ def get_after_rain(target_hour, base_time):
         print(f"[단기예보 API 요청 실패: {e}]")
         return [0] * target_hour
     rain_data = [
-        float(item['fcstValue']) if item['category'] == 'RN1' and '강수없음' not in item['fcstValue']
-        else 0.0
+        parse_rn1(item['fcstValue'])
         for item in items if item['category'] == 'RN1'
     ]
     return rain_data[:target_hour]
