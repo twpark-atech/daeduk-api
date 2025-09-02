@@ -45,8 +45,8 @@ def simulation(req: SimulationRequest):
 
     geojson_str = result_to_geojson(
         mask,
-        REF_HEIGHT, 
-        REF_WIDTH, 
+        #REF_HEIGHT, 
+        #REF_WIDTH, 
         TRANSFORM, 
         CRS
     )
@@ -75,8 +75,8 @@ def realtime(req: RealtimeRequest):
 
     geojson_str = result_to_geojson(
         mask,
-        REF_HEIGHT, 
-        REF_WIDTH, 
+        #REF_HEIGHT, 
+        #REF_WIDTH, 
         TRANSFORM, 
         CRS
     )

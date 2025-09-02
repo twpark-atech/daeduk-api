@@ -110,22 +110,37 @@ def prediction(client, h5_path, rain_feat, batch_size=1):
                 result[row:row+PATCH_SIZE, col:col+PATCH_SIZE] = output[b, :, :, 0]
 
     result = result[0:ORIGINAL_H, 0:ORIGINAL_W]
-    mask = result >= MASK_THRESHOLD
-    return mask
+    return result
 
-def result_to_geojson(
-        mask,
-        transform, 
-        crs
-    ):
+def result_to_geojson(result, transform, crs):
+    mask = result >= MASK_THRESHOLD
     shapes_gen = features.shapes(
         mask.astype(np.uint8),
-        mask=(mask == 1),
-        transform = transform
+        mask=(mask >= MASK_THRESHOLD),
+        transform=transform
     )
-    polygons = [shape(geom) for geom, val in shapes_gen if val == 1]
-    flood_gdf = gpd.GeoDataFrame(geometry=polygons, crs=crs)
-    flood_gdf = flood_gdf.to_crs("EPSG:4326")
+    
+    polygons = []
+    mean_depths = []
+
+    for geom, val in shapes_gen:
+        if val == 1:  # 침수 지역만
+            poly = shape(geom)
+
+            # polygon 영역에 해당하는 픽셀만 추출
+            mask_indices = features.geometry_mask([geom], result.shape, transform, invert=True)
+            depths = result[mask_indices]
+
+            mean_depth = float(depths.mean()) if depths.size > 0 else 0.0
+            polygons.append(poly)
+            mean_depths.append(round(mean_depth, 2))
+
+    # GeoDataFrame으로 변환 후 EPSG:4326 좌표계로 변환
+    flood_gdf = gpd.GeoDataFrame(
+        {"depth": mean_depths},
+        geometry=polygons,
+        crs=crs
+    ).to_crs("EPSG:4326")
 
     flood_gdf.to_file(os.path.join(RPATH, 'prediction.geojson'))
     geojson_str = flood_gdf.to_json()

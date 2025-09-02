@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-tritonclient[http]
+tritonclient[all]
 h5py
 scipy
 tqdm
