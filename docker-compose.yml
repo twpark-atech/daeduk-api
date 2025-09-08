@@ -1,6 +1,19 @@
-version: "3.8"
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: triton-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+    networks: [inference_net]
+
   triton:
     build:
       context: ./triton
@@ -15,23 +28,59 @@ services:
     volumes:
       - ./triton:/models
     command: tritonserver --model-repository=/models
-    networks:
-      - inference_net
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "curl -sf http://localhost:8000/v2/health/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 5s
+    restart: unless-stopped
+    networks: [inference_net]
 
-  fastapi:
+  api:
     build:
       context: ./fastapi
-    container_name: fastapi_server
-    depends_on:
-      - triton
+      dockerfile: Dockerfile
+    container_name: fastapi-api
+    command: >
+      uvicorn app.api:app --host 0.0.0.0 --port 9000 --proxy-headers
     environment:
-      - TRITON_SERVER_URL=http://triton:8000
+      TRITON_SERVER_URL: http://triton:8000
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+      triton:
+        condition: service_healthy
     ports:
       - "9000:9000"
     volumes:
       - ./fastapi:/app
-    networks:
-      - inference_net
+    restart: unless-stopped
+    networks: [inference_net]
+
+  worker:
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+    container_name: fastapi-worker
+    command: celery -A app.celery_app.celery_app worker --loglevel=INFO --concurrency=2 --prefetch-multiplier=1
+    environment:
+      TRITON_SERVER_URL: http://triton:8000
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CELERY_IMPORTS: app.tasks
+      PYTHONPATH: /app
+    depends_on:
+      redis:
+        condition: service_healthy
+      triton:
+        condition: service_healthy
+    volumes:
+      - ./fastapi:/app
+    restart: unless-stopped
+    networks: [inference_net]
 
 networks:
   inference_net:

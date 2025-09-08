@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 
 import tritonclient.http as httpclient
 from fastapi import FastAPI, HTTPException
-from config import *
+from .config import *
 
 def interpolate_rain(hourly_rain):
     x = np.arange(len(hourly_rain))
@@ -67,7 +67,7 @@ def parse_rn1(fcst_value):
     else:
         return float(fcst_value)
 
-def prediction(client, h5_path, rain_feat, batch_size=1):
+def prediction(client, h5_path, rain_feat, batch_size=1, model_name: str = "flood_model"):
     pad_h = (PATCH_SIZE - ORIGINAL_H % PATCH_SIZE) % PATCH_SIZE
     pad_w = (PATCH_SIZE - ORIGINAL_W % PATCH_SIZE) % PATCH_SIZE
     padded_h = ORIGINAL_H + pad_h
@@ -98,7 +98,7 @@ def prediction(client, h5_path, rain_feat, batch_size=1):
             inputs[1].set_data_from_numpy(rain_batch)
             outputs = [httpclient.InferRequestedOutput("reshape_1")]
 
-            response = client.infer(model_name="flood_model", inputs=inputs, outputs=outputs)
+            response = client.infer(model_name=model_name, inputs=inputs, outputs=outputs)
             output = response.as_numpy("reshape_1")
 
             if output.shape[1:] != (PATCH_SIZE, PATCH_SIZE, 1):

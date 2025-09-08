@@ -25,3 +25,4 @@ GETULTRASRTFCST_URL = 'http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/
 
 KMA_SFCTM3_KEY = os.getenv("KMA_SFCTM3")
 GETULTRASRTFCST_KEY = os.getenv("GETULTRASRTFCST")
+TRITON_SERVER_URL = "triton:8000"

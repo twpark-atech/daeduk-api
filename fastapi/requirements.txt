@@ -9,3 +9,6 @@ rasterio
 geopandas
 pandas
 requests
+celery[redis]
+redis
+pydantic
