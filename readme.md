@@ -38,16 +38,30 @@ data -> /fastapi/data
 docker compose up -d
 ```
  
-4. URL 접속 후 실행
-- '/simulation' 및 '/realtime' 선택
-- '/simulation' 선택 시 Parameter
+4. URL 사용
+- '/simulation'  Parameter (Output: "task_id", "status")
     - 'rain' : 최대 34시간의 시간당 강수강도를 리스트 형태로 입력
         ex) [2.0, 1.0, 7.0, 4.5, 4.0, 0.0, 6.5, 16.5, 53.0, 7.0, 0.0, 0.5, 5.0, 0.0, 0.5, 0.5, 0.5] 
     - 'batch_size' : 사용할 배치 사이즈 입력
-        ex) 8 (RTX 3090 기준, Batch Size 8: 12초 가량 소요)
-- '/realtime' 선택 시 Parameter
+        ex) 8 (RTX 3090 기준, Batch Size 8: 12초 가량 소요, 최대 64)
+    - 'mode' : 동기 / 비동기 선택
+        ex) "async" (비동기 선택 시)
+- '/realtime' Parameter (Output: "task_id", "status")
     - 'forecast_hour' : 앞으로 예측할 시간 입력 (0 ~ 6시간)
         ex) 6 (기상청에서 제공해주는 초단기예보는 6시간까지 존재)
     - 'batch_size' : 사용할 배치 사이즈 입력
-        ex) 8 (RTX 3090 기준, Batch Size 8: 12초 가량 소요)
+        ex) 8 (RTX 3090 기준, Batch Size 8: 12초 가량 소요, 최대 64)
+    - 'mode' : 동기 / 비동기 선택
+        ex) "async" (비동기 선택 시)
+- '/tasks/{task_id}' Parameter
+    - 'task_id' : '/simulation', '/realtime' 사용 시 나온 task_id 입력
+        ex) baece53b-f743-4d7a-9260-1c16d60d3949
+        - PENDING : '/simulation' 혹은 '/realtime' 실행 시 출력
+        - STARTED : Celery API에 입력 시 출력
+        - SUCCESS : Celery API에서 작동이 완료 되었을 때 출력
+        - FAILURE : Error 발생했을 때 출력
+- '/tasks/{task_id}/result' Parameter
+    - 'task_id' : '/simulation', '/realtime' 사용 시 나온 task_id 입력
+        ex) baece53b-f743-4d7a-9260-1c16d60d3949
+        
 - URL : localhost:9000/docs
