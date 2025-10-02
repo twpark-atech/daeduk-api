@@ -17,6 +17,42 @@ from datetime import datetime, timedelta
 import tritonclient.http as httpclient
 from fastapi import FastAPI, HTTPException
 from .config import *
+import psycopg2
+from psycopg2.extras import Json
+
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
+
+
+
+
+
+
+sql_statements = []
+
+output_file = "geojsonInsert.sql"
+
+Base = declarative_base()
+class ScenarioGeojson(Base):
+    __tablename__ = "tb_daedukscenario_geojson"
+    scnr_id = Column(Integer, primary_key=True)
+    fcstdt = Column(String, primary_key=True)
+    geojson = Column(JSON)  # PostgreSQL JSON 타입
+
+class ScenarioFlLink(Base):
+    __tablename__ = "TB_DAEDUK_FL_NODELINK_INFO"
+    scnr_id = Column(Integer, primary_key=True)
+    fcstdt = Column(String, primary_key=True)
+    fl_link_id = Column(String, primary_key=True)
+    link_table_name = Column(String)
+
+
+engine = create_engine("postgresql+psycopg2://dds_u:atech123@172.30.10.85:65432/dds_db")
+Session = sessionmaker(bind=engine)
+session = Session()
 
 def interpolate_rain(hourly_rain):
     x = np.arange(len(hourly_rain))
@@ -102,7 +138,7 @@ def prediction(client, h5_path, rain_feat, batch_size=1, model_name: str = "floo
             output = response.as_numpy("reshape_1")
 
             if output.shape[1:] != (PATCH_SIZE, PATCH_SIZE, 1):
-                raise HTTPException(status_code=500, detail=f"Unexpected output shape: {output.shape}")
+                raise HTTPException(status_code=500, detail=f"Unexpected output shape : {output.shape}")
 
             for b, batch_idx in enumerate(batch_indices):
                 row = (batch_idx // num_patch_w) * PATCH_SIZE
@@ -146,6 +182,97 @@ def result_to_geojson(result, transform, crs):
     geojson_str = flood_gdf.to_json()
     return geojson_str
 
+def result_to_geojsonDB(result, transform, crs, scnr_id, fcstdt):
+    mask = result >= MASK_THRESHOLD
+    shapes_gen = features.shapes(
+        mask.astype(np.uint8),
+        mask=(mask >= MASK_THRESHOLD),
+        transform=transform
+    )
+    
+    polygons = []
+    mean_depths = []
+
+    for geom, val in shapes_gen:
+        if val == 1:  # 침수 지역만
+            poly = shape(geom)
+
+            # polygon 영역에 해당하는 픽셀만 추출
+            mask_indices = features.geometry_mask([geom], result.shape, transform, invert=True)
+            depths = result[mask_indices]
+
+            mean_depth = float(depths.mean()) if depths.size > 0 else 0.0
+            polygons.append(poly)
+            mean_depths.append(round(mean_depth, 2))
+
+    # GeoDataFrame으로 변환 후 EPSG:4326 좌표계로 변환
+    flood_gdf = gpd.GeoDataFrame(
+        {"depth": mean_depths},
+        geometry=polygons,
+        crs=crs
+    ).to_crs("EPSG:4326")
+
+    #flood_gdf.to_file(os.path.join(RPATH, 'prediction.geojson'))
+    
+    #node linke 교차점 계산
+    node_gdf = gpd.read_file(NODELINK_PATH)
+    print(node_gdf)
+    if node_gdf.crs is None: node_gdf.set_crs(epsg=4326, inplace=True)
+    flood_gdf = flood_gdf.to_crs(node_gdf.crs)
+
+    geom_union = flood_gdf.union_all()
+
+    now = datetime.now()
+    print(geom_union)
+    node_gdf["intersects"] = node_gdf.geometry.intersects(geom_union)
+    intersected = node_gdf[node_gdf.intersects(geom_union)]
+    
+    intersected=intersected.drop(columns=["f_node","length","t_node","road_type","flooding_bit","building_damage_bit","link_id_org","intersects","sig_cd","road_name","geometry"])
+    intersected["scnr_id"]=scnr_id
+    intersected["fcstdt"]=fcstdt
+    #부산으로 고정
+    intersected["link_table_name"]="road.tb_road_link26"
+    intersected.rename(columns={"link_id": "fl_link_id"}, errors="raise", inplace=True)
+
+    geojson_str = flood_gdf.to_json()
+    geojson_dic = json.loads(geojson_str)
+    print("sql 생성")
+    
+    # sql = f"""INSERT INTO TB_DAEDUKSCENARIO_GEOJSON (scnr_id, fcstdt, geojson) VALUES (6, '{fcstdate}', '{geojson_str}');"""
+    # sql_statements.append(sql)
+    # with open(output_file, "w", encoding="utf-8") as out:
+    #     out.write("".join(sql_statements))
+    # print("파일 생성")
+
+    # #시나리오 geojson insert
+    # insert_query_db(sql)
+        
+    try:
+        row = ScenarioGeojson(scnr_id=scnr_id, fcstdt=fcstdt, geojson=geojson_dic)
+        session.add(row)
+        session.commit()
+    except SQLAlchemyError as e:
+        session.rollback()
+        print("DB 오류 발생:", str(e))
+    finally:
+        session.close()
+
+    with engine.begin() as conn:
+        intersected.to_sql(
+        name="tb_daeduk_fl_nodelink_info",
+        con=conn,
+        schema="public",          # 스키마 쓰면 지정, 기본은 public
+        if_exists="append",       # 'fail'|'replace'|'append'
+        index=False,
+        chunksize=1000,           # 대량일 때 분할
+        method="multi",           # INSERT ... VALUES (...), (...), ...
+    )
+
+    
+
+
+    return geojson_str
+
 def get_before_rain(target_hour, base_time):
     tm2 = base_time + "00"
     tm1 = (datetime.strptime(tm2, "%Y%m%d%H%M") - timedelta(hours=target_hour)).strftime("%Y%m%d%H") + "00"
@@ -158,7 +285,7 @@ def get_before_rain(target_hour, base_time):
     try:
         res = requests.get(KMA_SFCTM3_URL, params=params)
         res.raise_for_status()
-        text = res.text
+        text = res.text                                                                                                                                             
     except Exception as e:
         print(f"[종관기상관측 API 요청 실패: {e}]")
         return [0] * target_hour
@@ -214,3 +341,34 @@ def extract_rain_in_api(after_time):
     before_rain = get_before_rain(before_time, base_time)
     after_rain = get_after_rain(after_time, base_time)
     return before_rain + after_rain
+
+
+
+def insert_query_db(sql):
+    try:
+        conn = psycopg2.connect(
+            host="172.30.10.85",
+            dbname="dds_db",
+            user="dds_u",
+            password="atech123",
+            port=65432
+        )
+        cur = conn.cursor()
+        cur.execute(sql)
+        conn.commit()
+
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()  # 실패하면 롤백
+        print("Database error:", e)
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print("Unexpected error:", e)
+
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()

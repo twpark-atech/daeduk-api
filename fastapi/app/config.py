@@ -19,6 +19,7 @@ CRS = "EPSG:5186"
 RPATH = "/app/data"
 MASK_PATH = os.path.join(RPATH, "union_array_5m.npy")
 FEATURE_PATH = os.path.join(RPATH, "features_patched.h5")
+NODELINK_PATH = os.path.join(RPATH, "nodelink26.geojson")
 
 KMA_SFCTM3_URL = 'https://apihub.kma.go.kr/api/typ01/url/kma_sfctm3.php'
 GETULTRASRTFCST_URL = 'http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst'
