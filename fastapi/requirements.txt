@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+tritonclient[all]
+h5py
+scipy
+tqdm
+numpy==1.24.3
+rasterio
+geopandas
+pandas
+requests
+celery[redis]
+redis
+pydantic
