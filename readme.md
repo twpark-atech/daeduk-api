@@ -39,7 +39,15 @@ data -> /fastapi/data
 docker compose up -d
 ```
  
-4. URL 사용
+4. config 사용자화 
+- COLOR : 침수 지역 색 (R, G, B)
+- LINK_ID : 링크 shapefile의 LINK ID 컬럼 명
+- ALPHA : 투명도 (0 ~ 255)
+- BLOCK_SIZE: 다운 샘플링 배수 (예: 4일 경우. 5m -> 20m)
+- USE_GAUSSIAN : 가우시안 필터 여부
+- SIGMA : 가우시안 필터 강도
+
+5. URL 사용
 - '/simulation'  Parameter (Output: "task_id", "status")
     - 'rain' : 최대 34시간의 시간당 강수강도를 리스트 형태로 입력
         ex) [2.0, 1.0, 7.0, 4.5, 4.0, 0.0, 6.5, 16.5, 53.0, 7.0, 0.0, 0.5, 5.0, 0.0, 0.5, 0.5, 0.5] 

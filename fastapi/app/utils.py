@@ -13,6 +13,7 @@ from rasterio.features import rasterize
 from shapely.ops import unary_union
 from shapely.geometry import shape
 from scipy.interpolate import interp1d
+from scipy.ndimage import gaussian_filter
 from datetime import datetime, timedelta
 
 import tritonclient.http as httpclient
@@ -114,11 +115,54 @@ def prediction(client, h5_path, rain_feat, batch_size=1, model_name: str = "floo
     return result
 
 def result_to_geojson(result, transform, crs):
-    mask = result >= MASK_THRESHOLD
+    if result.ndim != 2:
+        raise ValueError(f"result_to_geojson expects 2D array, got shape={result.shape}")
+
+    h, w = result.shape
+    
+    if BLOCK_SIZE > 1:
+        h_trim = (h // BLOCK_SIZE) * BLOCK_SIZE
+        w_trim = (w // BLOCK_SIZE) * BLOCK_SIZE
+        result_trim = result[:h_trim, :w_trim]
+
+        result_blocks = result_trim.reshape(
+            h_trim // BLOCK_SIZE, BLOCK_SIZE,
+            w_trim // BLOCK_SIZE, BLOCK_SIZE
+        )
+        result_coarse = result_blocks.max(axis=(1, 3))
+
+        a = transform.a * BLOCK_SIZE
+        b = transform.b * BLOCK_SIZE
+        c = transform.c
+        d = transform.d * BLOCK_SIZE
+        e = transform.e * BLOCK_SIZE
+        f = transform.f
+        transform_coarse = type(transform)(a, b, c, d, e, f)
+    else:
+        result_coarse = result
+        transform_coarse = transform
+
+    if USE_GAUSSIAN:
+        result_smooth = gaussian_filter(result_coarse, sigma=SIGMA)
+    else:
+        result_smooth = result_coarse
+
+    mask = result_smooth >= MASK_THRESHOLD
+
+    if np.count_nonzero(mask) == 0:
+        empty_gdf = gpd.GeoDataFrame(
+            {"depth": []},
+            geometry=[],
+            crs=crs
+        ).to_crs("EPSG:4326")
+        ouput_path = os.path.join(RPATH, "prediction_geojson")
+        empty_gdf.to_file(ouput_path)
+        return empty_gdf.to_json()
+
     shapes_gen = features.shapes(
         mask.astype(np.uint8),
-        mask=(mask >= MASK_THRESHOLD),
-        transform=transform
+        mask=(mask),
+        transform=transform_coarse
     )
     
     polygons = []
@@ -129,8 +173,8 @@ def result_to_geojson(result, transform, crs):
             poly = shape(geom)
 
             # polygon 영역에 해당하는 픽셀만 추출
-            mask_indices = features.geometry_mask([geom], result.shape, transform, invert=True)
-            depths = result[mask_indices]
+            mask_indices = features.geometry_mask([geom], result_smooth.shape, transform_coarse, invert=True)
+            depths = result_smooth[mask_indices]
 
             mean_depth = float(depths.mean()) if depths.size > 0 else 0.0
             polygons.append(poly)
@@ -143,7 +187,8 @@ def result_to_geojson(result, transform, crs):
         crs=crs
     ).to_crs("EPSG:4326")
 
-    flood_gdf.to_file(os.path.join(RPATH, 'prediction.geojson'))
+    ouput_path = os.path.join(RPATH, "prediction_geojson")
+    flood_gdf.to_file(ouput_path)
     geojson_str = flood_gdf.to_json()
     return geojson_str
 
@@ -205,7 +250,7 @@ def extract_flooded_links(result, transform, crs):
     unique_idx = np.unique(flooded_idx)
 
     flooded_links_gdf = links.iloc[unique_idx - 1].copy()
-    flooded_idx = flooded_links_gdf[link_id_col].tolist()
+    flooded_idx = flooded_links_gdf[LINK_ID].tolist()
 
     with open (os.path.join(RPATH, 'flooded_link.txt'), "w", encoding="utf-8") as f:
         for lid in flooded_idx:
