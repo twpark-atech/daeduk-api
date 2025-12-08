@@ -8,7 +8,7 @@ import numpy as np
 from celery import shared_task
 
 from .celery_app import celery_app
-from .utils import rain_variables, prediction, result_to_geojson, extract_rain_in_api
+from .utils import rain_variables, prediction, result_to_geojson, save_flood_mask_png, extract_flooded_links, extract_rain_in_api
 from .config import *
 import tritonclient.http as httpclient
 from tritonclient.utils import InferenceServerException
@@ -46,6 +46,8 @@ def _infer_and_geojson(rain_feat, batch_size: int) -> str:
         raise RuntimeError(f"Triton inference failed: {e}") from None
     
     mask[_mask_array == 1] = 0
+    save_flood_mask_png(mask)
+    extract_flooded_links(result=mask, transform=TRANSFORM, crs=CRS)
     return result_to_geojson(mask, TRANSFORM, CRS)
 
 

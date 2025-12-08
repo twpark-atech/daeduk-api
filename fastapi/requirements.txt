@@ -12,3 +12,4 @@ requests
 celery[redis]
 redis
 pydantic
+pillow

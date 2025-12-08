@@ -6,6 +6,7 @@ import requests
 import numpy as np
 import pandas as pd
 import geopandas as gpd
+from PIL import Image
 from rasterio import features
 from rasterio.crs import CRS
 from rasterio.features import rasterize
@@ -145,6 +146,70 @@ def result_to_geojson(result, transform, crs):
     flood_gdf.to_file(os.path.join(RPATH, 'prediction.geojson'))
     geojson_str = flood_gdf.to_json()
     return geojson_str
+
+def save_flood_mask_png(result):
+    if result.ndim != 2:
+        raise ValueError(f"result_to_png expects 2D array, got shape={result.shape}")
+
+    mask = result >= MASK_THRESHOLD
+    h, w = result.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+
+    r, g, b = COLOR
+
+    rgba[mask, 0] = r
+    rgba[mask, 1] = g
+    rgba[mask, 2] = b
+    rgba[mask, 3] = ALPHA
+
+    img = Image.fromarray(rgba, mode="RGBA")
+    img.save(os.path.join(RPATH, 'prediction.png'), format="PNG")
+
+def extract_flooded_links(result, transform, crs):
+    if result.ndim != 2:
+        raise ValueError(f"result_to_png expects 2D array, got shape={result.shape}")
+    
+    mask = result >= MASK_THRESHOLD
+    h, w = result.shape
+
+    links = gpd.read_file(LINK_PATH)
+    if LINK_ID not in links.columns:
+        raise ValueError(f"{LINK_ID} 컬럼이 {LINK_PATH}에 없음.")
+    
+    if links.crs is None:
+        links.set_crs(crs, inplace=True)
+    elif links.crs != crs:
+        links = links.to_crs(crs)
+
+    links = links.reset_index(drop=True)
+    shapes_for_rasterize = [
+        (geom, idx + 1)
+        for idx, geom in enumerate(links.geometry)
+        if geom is not None and not geom.is_empty
+    ]
+
+    link_grid = rasterize(
+        shapes=shapes_for_rasterize,
+        out_shape=(h, w),
+        transform=transform,
+        fill=0,
+        dtype="int32"
+    )
+
+    flooded_idx = link_grid[mask]
+    flooded_idx = flooded_idx[flooded_idx > 0]
+
+    if flooded_idx.size == 0:
+        return [], links.iloc[0:0].copy()
+    
+    unique_idx = np.unique(flooded_idx)
+
+    flooded_links_gdf = links.iloc[unique_idx - 1].copy()
+    flooded_idx = flooded_links_gdf[link_id_col].tolist()
+
+    with open (os.path.join(RPATH, 'flooded_link.txt'), "w", encoding="utf-8") as f:
+        for lid in flooded_idx:
+            f.write(str(lid) + "\n")
 
 def get_before_rain(target_hour, base_time):
     tm2 = base_time + "00"

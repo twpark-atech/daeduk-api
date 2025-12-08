@@ -32,6 +32,7 @@ data -> /fastapi/data
 1 -> /triton/flood_model/1
 ```
 - 데이터 다운로드 : https://drive.google.com/file/d/1auJhLPEoTDKF6LsVlmhiX52bQ0CVrNQP/view?usp=sharing
+- MOCT_LINK.shp -> /fastapi/data # simulation 실행시 data에 저장
 
 3. Docker 실행
 ```
