@@ -17,34 +17,38 @@ class SimulationRequest(BaseModel):
     rain: List[float]
     batch_size: int = 64
     mode: Literal["async", "sync"] = "async"
+    max_areas: int = 12
+    target_lang: Literal["ko", "en", "vi", "id"] = "ko"
 
 class RealtimeRequest(BaseModel):
     forecast_hour: int
     batch_size: int = 64
     mode: Literal["async", "sync"] = "async"
+    max_areas: int = 12
+    target_lang: Literal["ko", "en", "vi", "id"] = "ko"
 
 @app.post("/simulation")
 def simulation(req: SimulationRequest):
     if req.mode == "sync":
         try:
-            geojson_str = simulation_task.run(req.rain, req.batch_size)
+            geojson_str = simulation_task.run(req.rain, req.batch_size, req.max_areas, req.target_lang)
             return Response(content=geojson_str, media_type="application/json")
         except FileNotFoundError as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    task = simulation_task.delay(req.rain, req.batch_size)
+    task = simulation_task.delay(req.rain, req.batch_size, req.max_areas, req.target_lang)
     return {"task_id": task.id, "status": "PENDING"}
 
 @app.post("/realtime")
 def realtime(req: RealtimeRequest):
     if req.mode == "sync":
         try:
-            geojson_str = realtime_task.run(req.forecast_hour, req.batch_size)
+            geojson_str = realtime_task.run(req.forecast_hour, req.batch_size, req.max_areas, req.target_lang)
             return Response(content=geojson_str, media_type="application/json")
         except FileNotFoundError as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    task = realtime_task.delay(req.forecast_hour, req.batch_size)
+    task = realtime_task.run(req.forecast_hour, req.batch_size, req.max_areas, req.target_lang)
     return {"task_id": task.id, "status": "PENDING"}
 
 @app.get("/tasks/{task_id}")

@@ -13,3 +13,10 @@ celery[redis]
 redis
 pydantic
 pillow
+geopy
+scikit-learn
+shapely
+python-dateutil
+lxml
+openai
+python-dotenv
