@@ -167,7 +167,7 @@ def result_to_geojson(result, transform, crs):
             geometry=[],
             crs=crs
         ).to_crs("EPSG:4326")
-        ouput_path = os.path.join(RPATH, "prediction_geojson")
+        ouput_path = os.path.join(RPATH, "prediction.geojson")
         empty_gdf.to_file(ouput_path)
         return empty_gdf.to_json()
 
@@ -199,7 +199,7 @@ def result_to_geojson(result, transform, crs):
         crs=crs
     ).to_crs("EPSG:4326")
 
-    ouput_path = os.path.join(RPATH, "prediction_geojson")
+    ouput_path = os.path.join(RPATH, "prediction.geojson")
     flood_gdf.to_file(ouput_path)
     geojson_str = flood_gdf.to_json()
     return geojson_str
